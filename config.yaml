@@ -1,0 +1,94 @@
+portal_url: "https://cheminotn.etsmtl.ca"
+target_url: "https://cheminotn.etsmtl.ca/horaire"
+
+browser:
+  keep_open: true
+  stop_on_alarm: false
+
+navigation:
+  home_url: "https://cheminotn.etsmtl.ca"
+  consultation_url: "https://cheminotn.etsmtl.ca/consultation"
+  inscription_url: "https://cheminotn.etsmtl.ca/inscription"
+  horaire_url: "https://cheminotn.etsmtl.ca/horaire"
+  session_card_text: "Inscription et consultation"
+  session_label: "Automne 2026"
+  select_session_button_text: "SÉLECTIONNER CETTE SESSION"
+  select_session_button: ""
+  inscription_tab_text: "INSCRIPTION AUTOMNE 2026"
+  inscription_tab_selector: ""
+  course_node_text: ""
+  course_node_selector: ""
+  full_modal_text: "Tous les groupes de ce cours sont actuellement complets"
+  no_group_text: "Aucun choix de groupe disponible"
+  options_panel_text: "Options d'horaires pour le cours sélectionné"
+  add_button_text: "AJOUTER"
+  modal_ok_text: "OK"
+  group_row_selector: ""
+  renavigate_each_cycle: false
+  mode: "manual_clicks"
+  manual_setup_seconds: 10
+  manual_finish_on_enter: true
+  reload_on_horaire_before_cycle: false
+
+courses:
+  - sigle: "LOG200"
+    section: ""
+    group_mode: "any"
+    session: "Automne 2026"
+    label: "LOG200"
+  - sigle: "GTI350"
+    section: ""
+    group_mode: "any"
+    session: "Automne 2026"
+    label: "GTI350"
+
+course:
+  sigle: "LOG200"
+  section: ""
+  group_mode: "any"
+  session: "Automne 2026"
+  label: "LOG200"
+
+delays:
+  min_seconds: 10
+  max_seconds: 10
+  jitter_min_seconds: 0
+  jitter_max_seconds: 0
+
+login:
+  manual_wait_seconds: 60
+  storage_state_path: "storage_state.json"
+  login_url_keywords:
+    - "login"
+    - "microsoft"
+    - "adfs"
+    - "oauth"
+    - "signin"
+
+selectors:
+  logged_in: ""
+  logged_out: ""
+  course_row: ""
+  status_available: ""
+  status_full: ""
+  full_text_patterns:
+    - "complet"
+    - "aucune place"
+    - "0 place"
+  available_text_patterns:
+    - "s'inscrire"
+    - "inscrire"
+  popup_close: ""
+
+alarm:
+  beep_frequency: 1000
+  beep_duration_ms: 500
+  repeat: 10
+  wav_path: ""
+
+notifications:
+  enabled: true
+
+paths:
+  logs_dir: "logs"
+  screenshots_dir: "screenshots"
