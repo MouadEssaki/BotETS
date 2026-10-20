@@ -12,54 +12,74 @@
   </p>
 </div>
 
-Bot Python ([Playwright](https://playwright.dev/python/)) qui surveille [Cheminot](https://cheminotn.etsmtl.ca). Par défaut, **un navigateur par cours**. Pour un cours marqué `auto_register`, il choisit **le premier groupe qui a une place** (l'horaire est ignoré), clique **AJOUTER+** puis **SAUVEGARDER**, et vous alerte sur **PC** (son) et **téléphone** (ntfy / Telegram). Les autres cours restent en alerte seulement.
+Bot Python ([Playwright](https://playwright.dev/python/)) qui surveille [Cheminot](https://cheminotn.etsmtl.ca). Une **fenêtre d’interface** permet de charger vos cours, d’ajouter des bots, puis de lancer **un navigateur par cours**. Avec `auto_register`, le bot prend le **premier groupe libre** (horaire ignoré), clique **AJOUTER+** puis **SAUVEGARDER**, et vous alerte sur **PC** (son) et **téléphone** (ntfy / Telegram).
 
 ## Fonctionnalités
 
-- Connexion **MFA manuelle** + sauvegarde de session (`storage_state.json`)
-- Mode **manuel** : vous naviguez une fois sur le graphe, le bot enchaîne les **clics** (pas de navigation par URL)
-- **Un bot par cours** (`browser.multi_bot`) : chaque sigle a son propre navigateur, au lieu d'une seule fenêtre qui passe de cours en cours
-- **Inscription auto** par cours (`auto_register: true`) : premier groupe libre, sans tenir compte de l'horaire
-- **Alarme sonore** Windows + notification **ntfy** ou **Telegram**
+- Interface **BotETS** : Load courses, recherche / autocomplete, Add bot, Start / Stop
+- Connexion **MFA** une fois + session sauvegardée (`storage_state.json`)
+- Navigation **auto** : accueil → **Sélectionner cette session** → `/inscription` → sigle (pas de clic manuel, pas de Window ready)
+- **Un bot par cours** (`browser.multi_bot`)
+- **Inscription auto** optionnelle (`auto_register`) : premier groupe avec une place
+- Liste de cours filtrée (section « Cours offerts », hors intégration / obligatoires déjà sur le cheminement)
+- **Alarme sonore** Windows + **ntfy** / **Telegram**
 - Navigateur **reste ouvert** après une alerte
 - Intervalle configurable entre les rondes (défaut : **10 s**)
 
 ## Déroulement typique
 
 ```text
-1. Lancement
-2. S'il n'y a pas encore de session : une fenêtre pour le MFA, puis elle se ferme
-3. multi_bot : une fenêtre Chrome par cours
-   → Pour chaque fenêtre : graphe INSCRIPTION, puis Entrée dans la console
-4. Chaque bot ne s'occupe que de son sigle (il ne passe plus au cours suivant) :
-     - Si modal « tous les groupes complets » → cours complet
-     - Sinon, si AJOUTER+ est actif :
-       - auto_register: true → premier groupe avec une place → AJOUTER+ → SAUVEGARDER → alarme, ce bot s'arrête
-       - sinon → alarme seulement, vous cliquez vous-même
+1. Double-clic launch.bat → fenêtre BotETS
+2. Load my courses → MFA si besoin → session → /inscription → liste de cours
+3. Tapez un sigle (autocomplete), cochez Auto-register ou non, Add bot
+   (un code absent de la liste peut quand même être ajouté)
+4. Start → un Chrome par bot, navigation seule
+5. Si AJOUTER+ est actif :
+   - auto_register → premier groupe libre → AJOUTER+ → SAUVEGARDER → alarme
+   - sinon → alarme seulement
 ```
-
-`auto_register` est **par cours**. Un cours sans ce drapeau n'est jamais inscrit par le bot.
 
 ## Prérequis
 
 - Windows 10/11 (alarme `winsound`)
-- Python 3.11+
+- Python 3.11+ (dans le PATH)
 - Compte Cheminot ÉTS (MFA)
 
-## Installation
+## Installation / lancement
+
+Le plus simple : double-cliquer [`launch.bat`](launch.bat). La première fois, il crée `.venv`, installe les dépendances et Chromium, puis ouvre l’interface.
+
+Installation manuelle :
 
 ```powershell
-cd c:\Users\mouad\BotETS
+cd chemin\vers\BotETS
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 playwright install chromium
 copy .env.example .env
+python -m src.ui
+```
+
+Sans interface (cours de `config.yaml`) :
+
+```powershell
+python -m src.main --run
+```
+
+Un seul cours :
+
+```powershell
+python -m src.main --course LOG200
 ```
 
 ## Configuration
 
-### Cours — [`config.yaml`](config.yaml)
+### Interface (recommandé)
+
+Les bots choisis dans l’UI sont mémorisés dans `launcher.json` (non versionné). La liste de sigles est remplie par **Load my courses**.
+
+### Cours — [`config.yaml`](config.yaml) (mode `--run`)
 
 ```yaml
 courses:
@@ -67,7 +87,7 @@ courses:
     section: ""          # vide = n'importe quel groupe
     group_mode: "any"    # any | first | exact
     label: "LOG200"
-    auto_register: true  # inscrit le premier groupe libre (horaire ignoré)
+    auto_register: true  # premier groupe libre (horaire ignoré)
   - sigle: "GTI350"
     section: ""
     group_mode: "any"
@@ -75,31 +95,26 @@ courses:
     auto_register: false # alerte seulement
 ```
 
-Ajoutez un bloc par cours à surveiller. Pas besoin du numéro de groupe si vous ne le connaissez pas.
-
 | `auto_register` | Effet quand AJOUTER+ est actif |
 |-----------------|--------------------------------|
-| `true` | Clique le premier groupe qui a encore de la place, puis **AJOUTER+** et **SAUVEGARDER**. Si ce groupe est refusé (conflit), le bot essaie le suivant. Ce bot s'arrête après une inscription envoyée. |
+| `true` | Premier groupe libre → **AJOUTER+** → **SAUVEGARDER**. En cas de refus, essai du suivant. Le bot s’arrête après une inscription envoyée. |
 | `false` | Alarme et notification seulement. |
-
-`browser.multi_bot: true` lance **un processus et un Chrome par cours** (`logs/bot_LOG200.log`, `logs/bot_GTI350.log`). La session est copiée depuis `storage_state.json`. La console demande ensuite Entrée **pour chaque fenêtre**, une fois le graphe d'inscription affiché. Avec un seul cours, ou avec `python -m src.main --course LOG200`, un seul bot démarre.
 
 ### Délais et navigation
 
 | Paramètre | Défaut | Description |
 |-----------|--------|-------------|
-| `delays.min_seconds` / `max_seconds` | `10` | Pause entre chaque **ronde** (tous les cours) |
-| `navigation.mode` | `manual_clicks` | Vous naviguez au départ ; le bot clique ensuite |
-| `navigation.manual_setup_seconds` | `10` | Temps max avant le bot (ou **Entrée** plus tôt) |
-| `navigation.manual_finish_on_enter` | `true` | Appuyez sur Entrée dans la console pour démarrer tout de suite |
+| `delays.min_seconds` / `max_seconds` | `10` | Pause entre chaque ronde |
+| `navigation.mode` | `auto` | Session → `/inscription` → cours automatiquement |
+| `navigation.session_label` | `Hiver 2027` | Session d’inscription ciblée |
 | `browser.keep_open` | `true` | Chrome reste ouvert après une alerte |
-| `browser.stop_on_alarm` | `false` | Continue les autres cours / rondes après une alerte |
+| `browser.stop_on_alarm` | `false` | Continue les autres bots après une alarme |
 | `browser.multi_bot` | `true` | Un navigateur par cours |
-| `navigation.save_button_text` | `SAUVEGARDER` | Bouton cliqué après AJOUTER+ si `auto_register` |
+| `navigation.save_button_text` | `SAUVEGARDER` | Bouton après AJOUTER+ si `auto_register` |
 
-Pour l’ancien mode qui ouvre les pages par URL : `navigation.mode: "auto"`.
+Mode ancien (clics manuels au départ) : `navigation.mode: "manual_clicks"`.
 
-**Attention :** des délais très courts (10 s) augmentent le risque de limitation par l’ÉTS. Pour un usage plus prudent : `min_seconds: 180`, `max_seconds: 300`.
+**Attention :** des délais très courts (10 s) augmentent le risque de limitation par l’ÉTS. Usage plus prudent : `min_seconds: 180`, `max_seconds: 300`.
 
 ### Notifications téléphone — [`.env`](.env)
 
@@ -117,11 +132,7 @@ NTFY_TOPIC=BotEts
 NTFY_PRIORITY=urgent
 ```
 
-Test :
-
-```powershell
-python -m tests.test_notify
-```
+Test : `python -m tests.test_notify`
 
 #### Telegram (optionnel)
 
@@ -130,21 +141,7 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
-Voir `.env.example` pour les étapes BotFather / getUpdates.
-
-Dans `config.yaml` : `notifications.enabled: true`.
-
-## Lancement
-
-Double-cliquez [`launch.bat`](launch.bat). La première fois, il crée `.venv`, installe les dépendances et Chromium, puis ouvre la fenêtre **BotETS**.
-
-1. **Load my courses** ouvre Cheminot, clique **Sélectionner cette session**, puis va à `/inscription` (sans étape manuelle). MFA une fois si demandé.
-2. Choisissez un cours, cochez **Auto-register** ou non, puis **Add bot**.
-3. **Start** : un Chrome par cours, navigation seule (session → `/inscription` → sigle). Pas de **Window ready**.
-
-`python -m src.main --run` lance les cours de `config.yaml` sans l'interface.
-
-**Première connexion** : MFA (~60 s dans `login.manual_wait_seconds`). La session est enregistrée dans `storage_state.json`.
+Voir `.env.example`. Dans `config.yaml` : `notifications.enabled: true`.
 
 **Place détectée** : bip PC, notification ntfy, capture `screenshots/place_available_SIGLE.png`.
 
@@ -152,21 +149,23 @@ Double-cliquez [`launch.bat`](launch.bat). La première fois, il crée `.venv`, 
 
 ```text
 BotETS/
-├── config.yaml          # cours, délais, navigation
-├── .env                 # secrets ntfy / Telegram (local)
-├── storage_state.json   # session Cheminot (généré, ne pas committer)
+├── launch.bat           # double-clic → interface
+├── assets/logo.png      # logo README
+├── config.yaml          # délais, navigation, cours (--run)
+├── launcher.json        # bots / sigles de l'UI (local)
+├── .env                 # ntfy / Telegram (local)
+├── storage_state.json   # session Cheminot (généré)
 ├── src/
-│   ├── main.py          # point d'entrée
-│   ├── ui.py            # fenêtre : cours, auto-register, Start
-│   ├── catalog.py       # sigles lus sur Cheminot après connexion
-│   ├── worker.py        # processus enfant (un cours)
+│   ├── ui.py            # fenêtre BotETS
+│   ├── catalog.py       # Load courses depuis Cheminot
+│   ├── main.py          # point d'entrée / multi-bot
+│   ├── worker.py        # un processus par cours
 │   ├── register.py      # AJOUTER+ puis SAUVEGARDER
 │   ├── monitor.py       # boucle de surveillance
-│   ├── navigation.py    # clics inscription → cours → horaire
+│   ├── navigation.py    # session → /inscription → horaire
 │   ├── notify.py        # ntfy / Telegram
-│   ├── browser.py       # Playwright, pause manuelle
-│   └── ...
-├── logs/bot.log
+│   └── browser.py       # Playwright
+├── logs/
 └── screenshots/
 ```
 
@@ -175,23 +174,24 @@ BotETS/
 ```powershell
 python -m tests.test_config
 python -m tests.test_navigation_config
+python -m tests.test_catalog
+python -m tests.test_register
 python -m tests.test_timeutil
 python -m tests.test_capacity_parse
 python -m tests.test_alarm
-python -m tests.test_notify      # envoi test ntfy
-python -m tests.test_register
+python -m tests.test_notify
 ```
 
 ## Dépannage
 
 | Problème | Piste |
 |----------|--------|
-| Pas de notification ntfy | `python -m tests.test_notify` ; topic identique dans l’app et `.env` ; voir `logs/bot.log` |
-| Navigateur se ferme | `browser.keep_open: true` ; à la fin, Entrée dans la console ferme le script |
-| Clic cours échoue | Sigle visible sur le graphe ; `navigation.course_node_selector` (F12) |
-| Onglet INSCRIPTION non cliqué | `navigation.inscription_tab_selector` (F12) |
-| Statut `unknown` | `screenshots/unknown_*.png` ; voir [`selectors.md`](selectors.md) |
-| AJOUTER+ grisé | Normal si déjà inscrit — le bot attend une place **actionnable** |
+| Load courses vide | MFA terminé ? Session choisie ? Voir `screenshots/inscription_catalog_failed_*.png` |
+| Pas de notification ntfy | `python -m tests.test_notify` ; topic identique app / `.env` ; `logs/bot.log` |
+| Navigateur se ferme | `browser.keep_open: true` |
+| Clic cours échoue | Sigle sur le graphe ; `navigation.course_node_selector` (F12) |
+| Statut `unknown` | `screenshots/unknown_*.png` ; [`selectors.md`](selectors.md) |
+| AJOUTER+ grisé | Normal si déjà inscrit — place non actionnable |
 | Crash timezone | `pip install tzdata` ; `TIMEZONE=America/Montreal` dans `.env` |
 | Blocage / déconnexion ÉTS | Augmenter `delays` (ex. 180–300 s) |
 
