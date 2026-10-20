@@ -115,7 +115,10 @@ class LauncherApp:
             width=18,
         )
         self.course_box.pack(side="left", padx=(8, 0))
-        self.course_box.bind("<KeyRelease>", self._on_course_typed)
+        # Filter only when opening the list — updating values on each key
+        # steals focus / interrupts typing on Windows.
+        self.course_box.bind("<Button-1>", self._on_course_dropdown)
+        self.course_box.bind("<Down>", self._on_course_dropdown)
         self.course_box.bind("<Return>", lambda _e: self._on_add())
 
         ttk.Checkbutton(
@@ -147,32 +150,16 @@ class LauncherApp:
             return list(self.sigles)
         return [sigle for sigle in self.sigles if query in sigle]
 
-    def _on_course_typed(self, event=None) -> None:
-        if event is not None and event.keysym in (
-            "Return",
-            "Tab",
-            "Up",
-            "Down",
-            "Left",
-            "Right",
-            "Escape",
-        ):
-            return
-        typed = self.course_var.get()
-        matches = self._filter_suggestions(typed)
-        self.course_box.configure(values=matches)
-        if matches and typed.strip():
-            try:
-                self.course_box.event_generate("<Down>")
-            except tk.TclError:
-                pass
+    def _on_course_dropdown(self, event=None) -> None:
+        matches = self._filter_suggestions(self.course_var.get())
+        self.course_box.configure(values=matches or list(self.sigles))
 
     def _refresh_bots(self) -> None:
         self.bot_list.delete(0, "end")
         for sigle, auto in self.bots:
             mode = "auto-register" if auto else "alert only"
             self.bot_list.insert("end", f"{sigle}    {mode}")
-        self.course_box.configure(values=self._filter_suggestions(self.course_var.get()))
+        self.course_box.configure(values=list(self.sigles))
 
     def _persist(self) -> None:
         save_launcher_state(self.state_path, self.sigles, self.bots)

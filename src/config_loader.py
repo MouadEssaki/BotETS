@@ -252,6 +252,31 @@ def isolate_course(config: AppConfig, sigle: str, *, as_worker: bool) -> AppConf
     )
 
 
+def worker_config_for(sigle: str, *, auto_register: bool = False) -> AppConfig:
+    """Config d'un bot UI — n'exige pas que le sigle soit dans config.yaml."""
+    config = load_config()
+    code = sigle.strip().upper()
+    if not code:
+        raise ValueError("Sigle vide")
+    session = config.navigation.session_label or config.course.session
+    course = CourseConfig(
+        sigle=code,
+        section="",
+        session=session,
+        label=code,
+        group_mode="any",
+        auto_register=bool(auto_register),
+    )
+    return replace(
+        config,
+        course=course,
+        courses=[course],
+        login=replace(config.login, storage_state_path=worker_storage_filename(code)),
+        navigation=replace(config.navigation, mode="auto"),
+        is_worker=True,
+    )
+
+
 def _resolve_timezone() -> str:
     from src.timeutil import normalize_timezone_key
 

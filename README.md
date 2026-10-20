@@ -8,7 +8,7 @@
   <p><strong>Surveillance Cheminot (ÉTS)</strong></p>
 
   <p>
-    <img alt="Version" src="https://img.shields.io/badge/version-1.0.2-0B5FFF?style=for-the-badge">
+    <img alt="Version" src="https://img.shields.io/badge/version-1.0.3-0B5FFF?style=for-the-badge">
     <img alt="Python" src="https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white">
     <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white">
   </p>
@@ -68,8 +68,8 @@ Pour publier :
 ```powershell
 # 1. Mettre à jour VERSION, commit + push sur main
 # 2. Tag :
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
 Le workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) construit `BotEts.exe` sur Windows et l’attache à la release.

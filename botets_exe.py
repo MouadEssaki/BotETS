@@ -193,10 +193,35 @@ def ensure_app_shortcuts(splash: Splash) -> None:
         splash.set_status("Shortcuts skipped — opening BotEts…")
 
 
+def _run_worker_mode(argv: list[str]) -> int:
+    """BotEts.exe --worker SIGLE [--auto-register] — un navigateur, pas d'UI."""
+    _prepare_sys_path()
+    from src.paths import user_data_dir
+
+    browsers = user_data_dir() / "ms-playwright"
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers)
+    if len(argv) < 2:
+        raise RuntimeError("Usage: BotEts.exe --worker SIGLE [--auto-register]")
+    sigle = argv[1]
+    auto = "--auto-register" in argv[2:]
+    from src.worker import run_course_worker
+
+    return run_course_worker(sigle, auto_register=auto)
+
+
 def main() -> int:
     mp.freeze_support()
     if mp.current_process().name != "MainProcess":
         return 0
+
+    # Workers: no splash / no install UI (started by Start button)
+    if len(sys.argv) >= 2 and sys.argv[1] == "--worker":
+        try:
+            return _run_worker_mode(sys.argv[1:])
+        except Exception as exc:
+            path = _log_crash(exc)
+            _show_error(f"BotEts worker failed.\n\n{exc}\n\nLog saved to:\n{path}")
+            return 1
 
     splash: Splash | None = None
     try:

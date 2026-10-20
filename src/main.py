@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import multiprocessing as mp
+import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -17,6 +19,7 @@ if str(_ROOT) not in sys.path:
 
 from src.browser import BrowserSession
 from src.config_loader import AppConfig, isolate_course, load_config, worker_storage_filename
+from src.paths import is_frozen, user_data_dir
 
 
 def setup_logging(config: AppConfig) -> None:
@@ -197,10 +200,52 @@ def _copy_worker_sessions(config: AppConfig) -> None:
         logger.info("Session copiée pour {label}: {path}", label=course.label, path=dest)
 
 
+def _worker_command(sigle: str, *, auto_register: bool) -> list[str]:
+    """Sous-processus dédié (fiable sous PyInstaller ; évite multiprocessing spawn)."""
+    if is_frozen():
+        cmd = [sys.executable, "--worker", sigle]
+    else:
+        cmd = [sys.executable, "-m", "src.worker", sigle]
+    if auto_register:
+        cmd.append("--auto-register")
+    return cmd
+
+
+def _worker_env() -> dict[str, str]:
+    env = os.environ.copy()
+    browsers = user_data_dir() / "ms-playwright"
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers)
+    return env
+
+
+class _BotProcess:
+    """Petit adaptateur pour Stop / join (subprocess.Popen)."""
+
+    def __init__(self, popen: subprocess.Popen, name: str) -> None:
+        self._popen = popen
+        self.name = name
+        self.pid = popen.pid
+
+    def is_alive(self) -> bool:
+        return self._popen.poll() is None
+
+    def terminate(self) -> None:
+        if self.is_alive():
+            self._popen.terminate()
+
+    def join(self, timeout: float | None = None) -> None:
+        try:
+            self._popen.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            pass
+
+    @property
+    def exitcode(self) -> int | None:
+        return self._popen.poll()
+
+
 def run_multi_bot(config: AppConfig, confirm=None, procs_out: list | None = None) -> int:
     """Lance un processus par cours. Navigation auto — pas de Window ready."""
-    from src.worker import run_course_process
-
     setup_logging(config)
     courses = config.courses_to_watch()
     labels = ", ".join(c.label for c in courses)
@@ -208,18 +253,13 @@ def run_multi_bot(config: AppConfig, confirm=None, procs_out: list | None = None
     _ensure_shared_login(config)
     _copy_worker_sessions(config)
 
-    ctx = mp.get_context("spawn")
-    procs: list[mp.Process] = []
+    env = _worker_env()
+    procs: list[_BotProcess] = []
     for course in courses:
-        start_event = ctx.Event()
-        start_event.set()
-        browser_ready = ctx.Event()
-        proc = ctx.Process(
-            target=run_course_process,
-            args=(course.sigle, start_event, browser_ready),
-            name=f"bot-{course.sigle}",
-        )
-        proc.start()
+        cmd = _worker_command(course.sigle, auto_register=course.auto_register)
+        logger.info("Lancement {label}: {cmd}", label=course.label, cmd=" ".join(cmd))
+        popen = subprocess.Popen(cmd, env=env)
+        proc = _BotProcess(popen, name=f"bot-{course.sigle}")
         procs.append(proc)
         logger.info("Bot {label} démarré (pid {pid})", label=course.label, pid=proc.pid)
     if procs_out is not None:
@@ -227,15 +267,12 @@ def run_multi_bot(config: AppConfig, confirm=None, procs_out: list | None = None
 
     exit_code = 0
     try:
-        logger.info("Les bots naviguent seuls (session → /inscription → cours). Ctrl+C pour arrêter.")
+        logger.info("Les bots naviguent seuls (session → /inscription → cours). Stop pour arrêter.")
         for proc in procs:
             proc.join()
-            if proc.exitcode not in (0, None):
-                logger.error(
-                    "{name} terminé avec le code {code}",
-                    name=proc.name,
-                    code=proc.exitcode,
-                )
+            code = proc.exitcode
+            if code not in (0, None):
+                logger.error("{name} terminé avec le code {code}", name=proc.name, code=code)
                 exit_code = 1
     except KeyboardInterrupt:
         logger.info("Arrêt de tous les bots (Ctrl+C)")
