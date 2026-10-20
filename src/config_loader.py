@@ -275,11 +275,18 @@ def _resolve_notifications(raw: dict[str, Any]) -> NotificationsConfig:
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
-    root = Path(__file__).resolve().parent.parent
-    if config_path is None:
-        config_path = root / "config.yaml"
+    from src.paths import ensure_user_config, resource_root, user_data_dir
 
-    load_dotenv(root / ".env")
+    data_root = ensure_user_config()
+    bundled = resource_root()
+    if config_path is None:
+        config_path = data_root / "config.yaml"
+        if not config_path.is_file():
+            config_path = bundled / "config.yaml"
+
+    load_dotenv(data_root / ".env")
+    if (bundled / ".env").is_file():
+        load_dotenv(bundled / ".env", override=False)
 
     with open(config_path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
@@ -390,5 +397,5 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         ),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         timezone=_resolve_timezone(),
-        project_root=root,
+        project_root=data_root,
     )

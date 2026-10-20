@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-exe:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build BotEts.exe
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\Activate.ps1
+          powershell -ExecutionPolicy Bypass -File scripts/build_exe.ps1
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/BotEts.exe
+            dist/BotEts-*.exe
+          generate_release_notes: true
+          body: |
+            ## BotEts for Windows
+
+            1. Download **BotEts.exe**
+            2. Double-click it
+            3. First launch downloads Chromium once (~150 MB) into `%LOCALAPPDATA%\BotEts`
+            4. The BotEts UI opens (logo + title)
+
+            No zip, no manual Python install required for end users.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

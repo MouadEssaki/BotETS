@@ -28,17 +28,24 @@ from src.main import run_multi_bot
 _SIGLE_OK = re.compile(r"^[A-Z]{3}\d{3}$")
 
 
+def _logo_path() -> Path:
+    from src.paths import resource_root
+
+    return resource_root() / "assets" / "logo.png"
+
+
 class LauncherApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("BotETS")
-        self.root.minsize(420, 480)
+        self.root.title("BotEts")
+        self.root.minsize(440, 520)
         self.root.configure(bg="#f4f5f7")
+        self._logo_image = None
 
         self.config = load_config()
         self.state_path = launcher_state_path(self.config)
         saved_sigles, saved_bots = load_launcher_state(self.state_path)
-        # Pas de bots pré-remplis (config.yaml / anciens LOG200) — l'utilisateur ajoute.
+        # Pas de bots pré-remplis — l'utilisateur ajoute.
         self.sigles = list(saved_sigles)
         self.bots: list[tuple[str, bool]] = list(saved_bots)
 
@@ -51,21 +58,49 @@ class LauncherApp:
         self.auto_var = tk.BooleanVar(value=True)
         self.course_var = tk.StringVar(value="")
 
+        self._apply_window_icon()
         self._build()
         self._refresh_bots()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _apply_window_icon(self) -> None:
+        logo = _logo_path()
+        if not logo.is_file():
+            return
+        try:
+            self._logo_image = tk.PhotoImage(file=str(logo))
+            self.root.iconphoto(True, self._logo_image)
+        except tk.TclError:
+            self._logo_image = None
 
     def _build(self) -> None:
         pad = {"padx": 12, "pady": 4}
         frame = ttk.Frame(self.root, padding=12)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="BotETS", font=("Segoe UI", 16, "bold")).pack(anchor="w")
+        header = ttk.Frame(frame)
+        header.pack(fill="x", pady=(0, 10))
+
+        logo_file = _logo_path()
+        if logo_file.is_file():
+            try:
+                raw = tk.PhotoImage(file=str(logo_file))
+                # Keep a reasonable header size
+                scale = max(1, raw.width() // 120)
+                self._header_logo = raw.subsample(scale, scale) if scale > 1 else raw
+                ttk.Label(header, image=self._header_logo).pack()
+            except tk.TclError:
+                self._header_logo = None
+        else:
+            self._header_logo = None
+
+        ttk.Label(header, text="BotEts", font=("Segoe UI", 22, "bold")).pack(pady=(8, 0))
         ttk.Label(
-            frame,
+            header,
             text="Type a course code to search. Unknown codes can still be added.",
-            wraplength=390,
-        ).pack(anchor="w", pady=(0, 8))
+            wraplength=400,
+            justify="center",
+        ).pack(pady=(4, 0))
 
         self.load_btn = ttk.Button(frame, text="Load my courses", command=self._on_load)
         self.load_btn.pack(anchor="w", **pad)

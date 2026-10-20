@@ -8,3 +8,7 @@ logs/
 *.log
 screenshots/
 .pytest_cache/
+dist/
+build/
+*.spec
+Bot_Logo-removebg-preview.png

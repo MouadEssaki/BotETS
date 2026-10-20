@@ -1,5 +1,7 @@
 <div align="center">
-  <img src="assets/logo.png" alt="BotETS logo" width="180">
+  <div style="background: white;">
+    <img src="assets/logo.png" alt="BotETS logo" width="180">
+  </div>
 
   <h1>BotETS</h1>
 
@@ -45,9 +47,40 @@ Bot Python ([Playwright](https://playwright.dev/python/)) qui surveille [Chemino
 - Python 3.11+ (dans le PATH)
 - Compte Cheminot ÉTS (MFA)
 
+## Release GitHub (fichier `.exe`)
+
+Les utilisateurs téléchargent **un seul fichier** `BotEts.exe` (pas de zip) :
+
+1. [Releases](https://github.com/MouadEssaki/BotETS/releases) → **BotEts.exe**
+2. Double-clic
+3. Au **premier lancement**, Chromium est téléchargé une fois (~150 Mo) dans `%LOCALAPPDATA%\BotEts`
+4. L’UI **BotEts** s’ouvre (logo + titre)
+
+Aucun Python à installer pour l’utilisateur final.
+
+Pour publier :
+
+```powershell
+# 1. Mettre à jour VERSION, commit + push sur main
+# 2. Tag :
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Le workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) construit `BotEts.exe` sur Windows et l’attache à la release.
+
+Build local :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+# → dist\BotEts.exe
+```
+
+Développeurs : `launch.bat` / `python -m src.ui` reste disponible.
+
 ## Installation / lancement
 
-Le plus simple : double-cliquer [`launch.bat`](launch.bat). La première fois, il crée `.venv`, installe les dépendances et Chromium, puis ouvre l’interface.
+Le plus simple : double-cliquer [`launch.bat`](launch.bat). La première fois, il crée `.venv`, installe les dépendances et Chromium, puis ouvre l’interface **BotEts** (logo en haut).
 
 Installation manuelle :
 
