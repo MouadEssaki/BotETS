@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ class CourseConfig:
     session: str
     label: str
     group_mode: str  # any | first | exact
+    auto_register: bool = False
 
     def has_exact_section(self) -> bool:
         return bool(self.section.strip()) and self.group_mode == "exact"
@@ -86,6 +88,7 @@ class PathsConfig:
 class BrowserConfig:
     keep_open: bool
     stop_on_alarm: bool
+    multi_bot: bool = False
 
 
 @dataclass
@@ -106,6 +109,7 @@ class NavigationConfig:
     no_group_text: str
     options_panel_text: str
     add_button_text: str
+    save_button_text: str
     modal_ok_text: str
     group_row_selector: str
     renavigate_each_cycle: bool
@@ -140,6 +144,7 @@ class AppConfig:
     log_level: str
     timezone: str
     project_root: Path = field(default_factory=Path.cwd)
+    is_worker: bool = False
 
     def courses_to_watch(self) -> list[CourseConfig]:
         return self.courses if self.courses else [self.course]
@@ -175,6 +180,75 @@ def _resolve_course_config(course_raw: dict[str, Any]) -> CourseConfig:
         session=_get(course_raw, "session", ""),
         label=label,
         group_mode=group_mode,
+        auto_register=bool(_get(course_raw, "auto_register", False)),
+    )
+
+
+def _safe_sigle(sigle: str) -> str:
+    cleaned = re.sub(r"[^\w.-]+", "_", sigle.strip())
+    return cleaned or "course"
+
+
+def worker_storage_filename(sigle: str) -> str:
+    """Fichier de session propre à un bot de cours (évite les écritures concurrentes)."""
+    return f"storage_state_{_safe_sigle(sigle)}.json"
+
+
+def config_with_bots(config: AppConfig, bots: list[tuple[str, bool]]) -> AppConfig:
+    """Remplace la liste de cours par les bots choisis dans l'interface."""
+    if not bots:
+        raise ValueError("Ajoutez au moins un cours")
+    session = config.navigation.session_label or config.course.session
+    courses: list[CourseConfig] = []
+    seen: set[str] = set()
+    for sigle, auto_register in bots:
+        code = sigle.strip().upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        courses.append(
+            CourseConfig(
+                sigle=code,
+                section="",
+                session=session,
+                label=code,
+                group_mode="any",
+                auto_register=bool(auto_register),
+            )
+        )
+    if not courses:
+        raise ValueError("Ajoutez au moins un cours")
+    return replace(
+        config,
+        course=courses[0],
+        courses=courses,
+        browser=replace(config.browser, multi_bot=True),
+        navigation=replace(config.navigation, mode="auto"),
+    )
+
+
+def isolate_course(config: AppConfig, sigle: str, *, as_worker: bool) -> AppConfig:
+    """Réduit la config à un seul cours. Un worker a sa propre copie de session."""
+    wanted = sigle.strip().upper()
+    matches = [c for c in config.courses_to_watch() if c.sigle.upper() == wanted]
+    if not matches:
+        known = ", ".join(c.sigle for c in config.courses_to_watch()) or "(aucun)"
+        raise ValueError(f"Cours introuvable: {sigle} (config: {known})")
+
+    course = matches[0]
+    login = config.login
+    navigation = config.navigation
+    if as_worker:
+        login = replace(login, storage_state_path=worker_storage_filename(course.sigle))
+        # Workers always navigate alone — never wait for "Window ready"
+        navigation = replace(navigation, mode="auto")
+    return replace(
+        config,
+        course=course,
+        courses=[course],
+        login=login,
+        navigation=navigation,
+        is_worker=as_worker,
     )
 
 
@@ -258,6 +332,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
                 "Options d'horaires pour le cours sélectionné",
             ),
             add_button_text=_get(nav_raw, "add_button_text", "AJOUTER"),
+            save_button_text=_get(nav_raw, "save_button_text", "SAUVEGARDER"),
             modal_ok_text=_get(nav_raw, "modal_ok_text", "OK"),
             group_row_selector=_get(nav_raw, "group_row_selector", "") or "",
             renavigate_each_cycle=bool(_get(nav_raw, "renavigate_each_cycle", False)),
@@ -311,6 +386,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         browser=BrowserConfig(
             keep_open=bool(_get(browser_raw, "keep_open", True)),
             stop_on_alarm=bool(_get(browser_raw, "stop_on_alarm", False)),
+            multi_bot=bool(_get(browser_raw, "multi_bot", False)),
         ),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         timezone=_resolve_timezone(),

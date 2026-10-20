@@ -4,6 +4,8 @@ target_url: "https://cheminotn.etsmtl.ca/horaire"
 browser:
   keep_open: true
   stop_on_alarm: false
+  # true = un navigateur dédié par cours (processus séparés)
+  multi_bot: true
 
 navigation:
   home_url: "https://cheminotn.etsmtl.ca"
@@ -11,10 +13,10 @@ navigation:
   inscription_url: "https://cheminotn.etsmtl.ca/inscription"
   horaire_url: "https://cheminotn.etsmtl.ca/horaire"
   session_card_text: "Inscription et consultation"
-  session_label: "Automne 2026"
+  session_label: "Hiver 2027"
   select_session_button_text: "SÉLECTIONNER CETTE SESSION"
   select_session_button: ""
-  inscription_tab_text: "INSCRIPTION AUTOMNE 2026"
+  inscription_tab_text: "Inscription Hiver 2027"
   inscription_tab_selector: ""
   course_node_text: ""
   course_node_selector: ""
@@ -22,10 +24,12 @@ navigation:
   no_group_text: "Aucun choix de groupe disponible"
   options_panel_text: "Options d'horaires pour le cours sélectionné"
   add_button_text: "AJOUTER"
+  save_button_text: "SAUVEGARDER"
   modal_ok_text: "OK"
   group_row_selector: ""
   renavigate_each_cycle: false
-  mode: "manual_clicks"
+  # auto = session → /inscription → cours (aucun clic manuel)
+  mode: "auto"
   manual_setup_seconds: 10
   manual_finish_on_enter: true
   reload_on_horaire_before_cycle: false
@@ -34,19 +38,21 @@ courses:
   - sigle: "LOG200"
     section: ""
     group_mode: "any"
-    session: "Automne 2026"
+    session: "Hiver 2027"
     label: "LOG200"
+    auto_register: true   # premier groupe avec une place, horaire ignoré
   - sigle: "GTI350"
     section: ""
     group_mode: "any"
-    session: "Automne 2026"
+    session: "Hiver 2027"
     label: "GTI350"
+    auto_register: false
 
 course:
   sigle: "LOG200"
   section: ""
   group_mode: "any"
-  session: "Automne 2026"
+  session: "Hiver 2027"
   label: "LOG200"
 
 delays:

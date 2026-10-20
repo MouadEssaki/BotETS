@@ -19,6 +19,9 @@ def test_load_config_defaults():
     assert config.navigation.horaire_url.endswith("/horaire")
     assert config.course.sigle == "LOG200"
     assert config.course.group_mode in ("any", "first", "exact")
+    assert config.course.auto_register is True
+    assert config.browser.multi_bot is True
+    assert config.navigation.save_button_text == "SAUVEGARDER"
 
 
 if __name__ == "__main__":

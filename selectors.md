@@ -23,7 +23,7 @@ course:
 
 | `group_mode` | Usage |
 |--------------|--------|
-| `any` | Alarme si **AJOUTER+** actif et au moins un groupe dans le tableau (défaut si `section` vide) |
+| `any` | Alarme si **AJOUTER+** actif et au moins un groupe dans le tableau (défaut si `section` vide). Avec `auto_register: true`, le bot clique le premier groupe qui a une place (horaire ignoré), puis **AJOUTER+** et **SAUVEGARDER**. |
 | `first` | Sélectionne la première ligne groupe à la navigation |
 | `exact` | Filtre le groupe `section` (ex. `01`) si vous le connaissez |
 

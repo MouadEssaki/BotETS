@@ -164,7 +164,7 @@ class BrowserSession:
     def get_manual_login_callback(self) -> Callable[[Page], None]:
         def _callback(page: Page) -> None:
             self.wait_for_manual_login(page)
-            if self.config.navigation.uses_manual_clicks():
+            if self.config.navigation.uses_manual_clicks() and not self.config.is_worker:
                 self.wait_for_manual_navigation(page)
 
         return _callback

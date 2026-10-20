@@ -1,7 +1,8 @@
 @echo off
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
-    echo Creez d'abord le venv: python -m venv .venv
+    echo Lancez launch.bat une premiere fois pour installer Python et les dependances.
+    pause
     exit /b 1
 )
-.venv\Scripts\python.exe -m src.main
+.venv\Scripts\python.exe -m src.ui

@@ -7,6 +7,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from src.config_loader import load_config
+from src.navigation import path_contains_route
 
 
 def test_navigation_config_loaded():
@@ -29,14 +30,23 @@ def test_group_mode_any_without_section():
     assert config.browser.keep_open is True
 
 
-def test_manual_clicks_mode():
+def test_auto_navigation_mode():
     config = load_config(_ROOT / "config.yaml")
-    assert config.navigation.uses_manual_clicks()
-    assert config.navigation.manual_setup_seconds <= 15
-    assert config.navigation.manual_finish_on_enter is True
+    assert not config.navigation.uses_manual_clicks()
+    assert config.navigation.mode == "auto"
+
+
+def test_inscription_url_is_the_path_not_the_hash():
+    assert path_contains_route("https://cheminotn.etsmtl.ca/inscription", "inscription")
+    assert path_contains_route("https://cheminotn.etsmtl.ca/inscription?x=1", "inscription")
+    assert not path_contains_route("https://cheminotn.etsmtl.ca#inscription", "inscription")
+    assert not path_contains_route("https://cheminotn.etsmtl.ca/#/inscription", "inscription")
+    assert not path_contains_route("https://cheminotn.etsmtl.ca/consultation", "inscription")
 
 
 if __name__ == "__main__":
     test_navigation_config_loaded()
     test_group_mode_any_without_section()
+    test_auto_navigation_mode()
+    test_inscription_url_is_the_path_not_the_hash()
     print("test_navigation_config OK")

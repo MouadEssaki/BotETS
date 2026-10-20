@@ -38,9 +38,18 @@ def _nav_screenshot(page: Page, config: AppConfig, name: str) -> Path | None:
         return None
 
 
+def path_contains_route(url: str, route: str) -> bool:
+    """Vrai seulement si le chemin contient /route. Un hash (#inscription) ne compte pas."""
+    segment = route.strip("/").lower()
+    if not segment:
+        return False
+    path = urlparse(url).path.lower().strip("/")
+    return segment in path.split("/") if path else False
+
+
 def _url_matches(page: Page, *fragments: str) -> bool:
-    url = page.url.lower()
-    return any(f.lower().lstrip("/") in url for f in fragments)
+    """Route Cheminot : le chemin de l'URL, pas le fragment (#inscription)."""
+    return any(path_contains_route(page.url, fragment) for fragment in fragments)
 
 
 def _wait_url_contains(page: Page, fragment: str, timeout_ms: int = 30000) -> bool:
@@ -79,35 +88,34 @@ def _is_in_portal_session(page: Page, config: AppConfig) -> bool:
     return False
 
 
-def _goto_route(page: Page, base: str, route: str) -> None:
-    """Navigation directe vers une route Cheminot (SPA)."""
+def _goto_route(page: Page, base: str, route: str) -> bool:
+    """Ouvre https://…/inscription (ou une autre route) par une vraie navigation.
+
+    Le réseau de Cheminot reste souvent actif, donc un échec de networkidle
+    ne doit pas annuler le goto ni basculer vers #inscription.
+    """
     route = route.strip("/")
-    for url in (
-        f"{base.rstrip('/')}/{route}",
-        f"{base.rstrip('/')}#{route}",
-        f"{base.rstrip('/')}/#/{route}",
-    ):
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_load_state("networkidle", timeout=25000)
-            if _url_matches(page, route):
-                logger.debug("Route {route} atteinte via {url}", route=route, url=url)
-                return
-        except Exception as e:
-            logger.debug("goto {url} échoué: {e}", url=url, e=e)
-    page.evaluate(
-        """(path) => {
-            const base = window.location.origin;
-            if (window.history && window.history.pushState) {
-                window.history.pushState({}, '', base + path);
-                window.dispatchEvent(new PopStateEvent('popstate'));
-            } else {
-                window.location.assign(base + path);
-            }
-        }""",
-        f"/{route}",
-    )
+    url = f"{base.rstrip('/')}/{route}"
+    logger.info("Ouverture directe {url}", url=url)
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    except Exception as e:
+        logger.warning("goto {url} échoué: {e}", url=url, e=e)
+        return False
+    try:
+        page.wait_for_load_state("networkidle", timeout=5000)
+    except Exception:
+        logger.debug("networkidle ignoré pour {url}", url=url)
+    if path_contains_route(page.url, route):
+        logger.info("Route {route} ouverte — {url}", route=route, url=page.url)
+        return True
     page.wait_for_timeout(1500)
+    loaded = path_contains_route(page.url, route)
+    if loaded:
+        logger.info("Route {route} ouverte (retard SPA) — {url}", route=route, url=page.url)
+    else:
+        logger.warning("Route {route} non tenue — URL actuelle: {url}", route=route, url=page.url)
+    return loaded
 
 
 def _click_first_visible(page: Page, locator_str: str, timeout_ms: int = 8000) -> bool:
@@ -276,89 +284,76 @@ def _portal_origin(config: AppConfig) -> str:
 
 
 def _click_inscription_main_tab(page: Page, config: AppConfig) -> bool:
+    """Clique un vrai lien vers /inscription. Un libellé seul ne change pas la page."""
     nav = config.navigation
-    tab_re = re.compile(r"INSCRIPTION\s+AUTOMNE\s+2026", re.I)
+    if nav.inscription_tab_selector:
+        return _click_first_visible(page, nav.inscription_tab_selector)
+
+    for selector in (
+        "a[href='/inscription']",
+        "a[href$='/inscription']",
+        "a[href*='/inscription']",
+        "[routerlink='/inscription']",
+        "[routerlink*='inscription']",
+    ):
+        try:
+            loc = page.locator(selector)
+            count = min(loc.count(), 6)
+        except Exception:
+            count = 0
+        for i in range(count):
+            el = loc.nth(i)
+            try:
+                if el.is_visible(timeout=800):
+                    el.click(timeout=5000)
+                    logger.info("Clic lien inscription ({selector})", selector=selector)
+                    return True
+            except Exception:
+                continue
+
+    tab_re = re.compile(r"INSCRIPTION\s+AUTOMNE", re.I)
     if nav.inscription_tab_text:
         tab_re = re.compile(
             re.escape(nav.inscription_tab_text).replace(r"\ ", r"\s+"),
             re.I,
         )
-
-    if nav.inscription_tab_selector:
-        return _click_first_visible(page, nav.inscription_tab_selector)
-
-    # Onglet principal (barre noire) — pas le sous-menu INFO. GÉNÉRALES
-    try:
-        top_bar = page.locator(
-            "header, nav, [role='banner'], [class*='toolbar'], [class*='header'], [class*='nav']"
-        ).first
-        for loc in (
-            top_bar.locator("a").filter(has_text=tab_re),
-            top_bar.locator("button").filter(has_text=tab_re),
-            top_bar.get_by_text(tab_re),
-        ):
-            try:
-                el = loc.first
-                if el.is_visible(timeout=2000):
-                    el.click(timeout=8000)
-                    return True
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    for role in ("tab", "link", "button"):
+    for role in ("link", "tab", "button"):
         try:
             candidates = page.get_by_role(role, name=tab_re)
             for i in range(min(candidates.count(), 5)):
                 el = candidates.nth(i)
-                if el.is_visible(timeout=1000):
-                    el.click(timeout=8000)
+                if el.is_visible(timeout=800):
+                    el.click(timeout=5000)
+                    logger.info("Clic rôle {role} inscription", role=role)
                     return True
         except Exception:
             continue
-
-    try:
-        page.locator("a[href*='inscription'], [routerlink*='inscription']").first.click(timeout=8000)
-        return True
-    except Exception:
-        pass
-
-    return _click_by_text(page, nav.inscription_tab_text, exact=False)
+    return False
 
 
 def _step_open_inscription_tab(page: Page, config: AppConfig) -> bool:
     nav = config.navigation
     origin = _portal_origin(config)
-    logger.info("Étape 2 — Onglet {tab}", tab=nav.inscription_tab_text)
+    logger.info("Étape 2 — /inscription")
     logger.info("URL avant étape 2: {url}", url=page.url)
 
-    if _url_matches(page, "inscription"):
+    if path_contains_route(page.url, "inscription"):
         logger.info("Étape 2 OK (déjà sur inscription) — URL: {url}", url=page.url)
         return True
 
-    if not _url_matches(page, "consultation"):
-        _goto_route(page, origin, "consultation")
-        if not _url_matches(page, "consultation"):
-            page.goto(nav.consultation_url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_load_state("networkidle", timeout=25000)
-
-    logger.info("Navigation directe vers /inscription")
-    _goto_route(page, origin, "inscription")
-    if _wait_for_spa_route(page, "inscription", 45000):
-        logger.info("Étape 2 OK (goto/route) — URL: {url}", url=page.url)
+    if _goto_route(page, origin, "inscription"):
+        logger.info("Étape 2 OK (goto /inscription) — URL: {url}", url=page.url)
         return True
 
-    logger.info("Tentative clic onglet INSCRIPTION (barre principale)")
+    logger.info("Goto /inscription non tenu — clic du lien, puis nouvel essai")
     if _click_inscription_main_tab(page, config):
-        page.wait_for_load_state("networkidle", timeout=25000)
-        if _wait_for_spa_route(page, "inscription", 30000):
-            logger.info("Étape 2 OK (clic onglet) — URL: {url}", url=page.url)
+        if _wait_url_contains(page, "inscription", 8000) and path_contains_route(page.url, "inscription"):
+            logger.info("Étape 2 OK (clic lien) — URL: {url}", url=page.url)
             return True
+        logger.info("Le clic n'a pas changé le chemin — nouvel appel à {url}", url=nav.inscription_url)
 
-    page.wait_for_timeout(2000)
-    if _url_matches(page, "inscription"):
-        logger.info("Étape 2 OK (retard SPA) — URL: {url}", url=page.url)
+    if _goto_route(page, origin, "inscription"):
+        logger.info("Étape 2 OK (second goto) — URL: {url}", url=page.url)
         return True
 
     _nav_screenshot(page, config, "nav_step2_inscription_tab_failed")
@@ -444,15 +439,16 @@ def cycle_via_clicks(page: Page, config: AppConfig) -> NavigationResult:
         except Exception as e:
             logger.warning("Reload horaire échoué: {e}", e=e)
 
-    tab_clicked = _click_inscription_main_tab(page, config)
-    if tab_clicked:
-        logger.info("Onglet inscription cliqué")
-        page.wait_for_timeout(1500)
-        page.wait_for_load_state("networkidle", timeout=20000)
+    if not path_contains_route(page.url, "inscription"):
+        tab_clicked = _click_inscription_main_tab(page, config)
+        if tab_clicked:
+            logger.info("Lien inscription cliqué")
+            page.wait_for_timeout(1000)
+        if not path_contains_route(page.url, "inscription"):
+            logger.info("Le clic n'a pas ouvert /inscription — navigation directe")
+            _goto_route(page, _portal_origin(config), "inscription")
     else:
-        logger.warning(
-            "Onglet inscription non cliqué — poursuite (graphe peut-être déjà visible)"
-        )
+        logger.info("Déjà sur /inscription")
 
     if not _click_course_node(page, config):
         _nav_screenshot(page, config, "cycle_course_click_failed")
@@ -490,17 +486,8 @@ def cycle_via_clicks(page: Page, config: AppConfig) -> NavigationResult:
 def navigate_to_course_horaire(page: Page, config: AppConfig) -> NavigationResult:
     nav = config.navigation
 
-    step1_ok = _step_select_session(page, config)
-    if not step1_ok and not _url_matches(page, "consultation", "inscription", "horaire"):
-        return NavigationResult(NavigationOutcome.FAILED, "Échec sélection session")
-    if not step1_ok:
-        logger.warning(
-            "Étape 1 non confirmée — poursuite depuis {url}",
-            url=page.url,
-        )
-
-    if not _step_open_inscription_tab(page, config):
-        return NavigationResult(NavigationOutcome.FAILED, "Échec onglet inscription")
+    if not ensure_inscription_catalog_page(page, config):
+        return NavigationResult(NavigationOutcome.FAILED, "Échec ouverture /inscription")
 
     if not _click_course_node(page, config):
         return NavigationResult(NavigationOutcome.FAILED, "Échec clic cours")
@@ -535,6 +522,86 @@ def navigate_to_course_horaire(page: Page, config: AppConfig) -> NavigationResul
 
     logger.info("Navigation terminée — URL: {url}", url=page.url)
     return NavigationResult(NavigationOutcome.HORAIRE_READY, "Page horaire atteinte")
+
+
+def page_has_course_list(page: Page) -> bool:
+    """Vrai si la page affiche « Cours offerts » ou des sigles (graphe / liste)."""
+    try:
+        text = page.inner_text("body", timeout=5000)
+    except Exception:
+        return False
+    if "cours offerts" in text.lower():
+        return True
+    return bool(re.search(r"\b[A-Za-z]{3}\d{3}\b", text))
+
+
+def click_inscription_registration_session(page: Page) -> bool:
+    """Premier « Sélectionner cette session » = carte Inscription (ex. Hiver 2027)."""
+    try:
+        body = page.inner_text("body", timeout=5000)
+    except Exception:
+        return False
+    if "sélectionner cette session" not in body.lower() and "selectionner cette session" not in body.lower():
+        return False
+    logger.info("Clic session — Inscription et consultation")
+    page.get_by_role("button", name=re.compile(r"s[ée]lectionner cette session", re.I)).first.click(
+        timeout=10000
+    )
+    try:
+        page.wait_for_url(re.compile(r"/(consultation|inscription)", re.I), timeout=15000)
+    except PlaywrightTimeout:
+        page.wait_for_timeout(1500)
+    return True
+
+
+def ensure_inscription_catalog_page(page: Page, config: AppConfig) -> bool:
+    """Ouvre la liste de cours.
+
+    Sur Cheminot, ``/inscription`` seul ne suffit pas : sans « Sélectionner
+    cette session » sur l'accueil, la page revient sans graphe. Ordre forcé :
+    accueil → session Inscription → ``/inscription``.
+    """
+    nav = config.navigation
+
+    if path_contains_route(page.url, "inscription") and page_has_course_list(page):
+        logger.info("Déjà sur /inscription avec cours visibles")
+        return True
+
+    logger.info("Accueil → Sélectionner cette session → /inscription")
+    page.goto(nav.home_url, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(800)
+    clicked = click_inscription_registration_session(page)
+    if not clicked and not _is_in_portal_session(page, config):
+        # Bouton peut être absent si la session est déjà choisie
+        logger.info("Pas de bouton session — essai direct /inscription")
+    page.goto(nav.inscription_url, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(1200)
+    if page_has_course_list(page):
+        logger.info("Cours visibles sur {url}", url=page.url)
+        return True
+
+    # Second essai : carte session puis onglet
+    page.goto(nav.home_url, wait_until="domcontentloaded", timeout=60000)
+    _click_session_select_button(page, config)
+    page.wait_for_timeout(1500)
+    page.goto(nav.inscription_url, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(1200)
+    if page_has_course_list(page):
+        return True
+
+    _click_inscription_main_tab(page, config)
+    page.wait_for_timeout(1000)
+    page.goto(nav.inscription_url, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(1200)
+    ok = page_has_course_list(page)
+    if not ok:
+        logger.warning("Liste de cours absente — URL: {url}", url=page.url)
+        _nav_screenshot(page, config, "inscription_catalog_failed")
+    return ok
+
+
+def open_inscription_board(page: Page, config: AppConfig) -> bool:
+    return ensure_inscription_catalog_page(page, config)
 
 
 def is_on_horaire_page(page: Page, config: AppConfig) -> bool:

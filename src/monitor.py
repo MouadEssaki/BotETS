@@ -14,6 +14,7 @@ from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 from src import alarm
 from src.notify import notify_place_available
+from src.register import register_course
 from src.capacity import parse_capacity
 from src.config_loader import AppConfig
 from src.navigation import (
@@ -221,11 +222,17 @@ def run_monitor_loop(
     manual = config.navigation.uses_manual_clicks()
 
     logger.info("Démarrage surveillance — cours: {labels}", labels=labels)
-    if manual:
+    if manual and not config.is_worker:
         logger.info(
             "Mode manuel : pause initiale, puis pour chaque cours : inscription → sigle → horaire"
         )
         browser_session.wait_for_manual_navigation(page)
+    elif manual:
+        logger.info(
+            "Bot dédié {label} : inscription → {sigle} → horaire",
+            label=config.course.label,
+            sigle=config.course.sigle,
+        )
     else:
         logger.info(
             "Mode auto : accueil → consultation → inscription → {sigle} → horaire",
@@ -234,7 +241,7 @@ def run_monitor_loop(
 
     ensure_logged_in(page, config, manual_login)
 
-    if manual:
+    if manual and not config.is_worker:
         nav_result = NavigationResult(
             NavigationOutcome.HORAIRE_READY,
             "Prêt après navigation manuelle",
@@ -246,6 +253,7 @@ def run_monitor_loop(
             _screenshot(page, config, "navigation_failed")
 
     iteration = 0
+    registered: set[str] = set()
     while True:
         iteration += 1
         ts = local_timestamp(config.timezone)
@@ -260,6 +268,8 @@ def run_monitor_loop(
                 time.sleep(45)
 
         for idx, course in enumerate(watched):
+            if course.sigle in registered:
+                continue
             course_cfg = replace(config, course=course)
             logger.info("--- Cours {i}/{total} : {label} ---", i=idx + 1, total=len(watched), label=course.label)
 
@@ -283,19 +293,57 @@ def run_monitor_loop(
                     ts=ts,
                 )
                 _screenshot(page, course_cfg, f"place_available_{course.sigle}")
-                alarm.trigger(config.alarm)
-                notify_place_available(
-                    course.label,
-                    f"AJOUTER+ actif sur Cheminot ({ts}). Inscrivez-vous sur le PC.",
-                    config,
-                )
-                logger.info(
-                    "Inscrivez-vous manuellement pour {label}. Le navigateur reste ouvert.",
-                    label=course.label,
-                )
-                if config.browser.stop_on_alarm:
-                    logger.info("stop_on_alarm=true — arrêt du script.")
-                    return
+                if course.auto_register:
+                    result = register_course(page, course_cfg)
+                    if result.ok:
+                        logger.success(
+                            "Inscription envoyée pour {label}: {msg}",
+                            label=course.label,
+                            msg=result.message,
+                        )
+                        _screenshot(page, course_cfg, f"registered_{course.sigle}")
+                        alarm.trigger(config.alarm)
+                        notify_place_available(
+                            course.label,
+                            f"Inscription envoyée ({result.message}) à {ts}. Vérifiez Cheminot.",
+                            config,
+                        )
+                        registered.add(course.sigle)
+                        if (
+                            config.is_worker
+                            or config.browser.stop_on_alarm
+                            or len(registered) == len(watched)
+                        ):
+                            logger.info("Cours {label} inscrit — arrêt de ce bot.", label=course.label)
+                            return
+                    else:
+                        logger.warning(
+                            "Inscription auto échouée pour {label}: {msg}",
+                            label=course.label,
+                            msg=result.message,
+                        )
+                        _screenshot(page, course_cfg, f"register_failed_{course.sigle}")
+                        alarm.trigger(config.alarm)
+                        notify_place_available(
+                            course.label,
+                            f"Place ouverte pour {course.label}, inscription auto échouée ({result.message}). "
+                            f"Inscrivez-vous sur le PC ({ts}).",
+                            config,
+                        )
+                else:
+                    alarm.trigger(config.alarm)
+                    notify_place_available(
+                        course.label,
+                        f"AJOUTER+ actif sur Cheminot ({ts}). Inscrivez-vous sur le PC.",
+                        config,
+                    )
+                    logger.info(
+                        "Inscrivez-vous manuellement pour {label}. Le navigateur reste ouvert.",
+                        label=course.label,
+                    )
+                    if config.browser.stop_on_alarm:
+                        logger.info("stop_on_alarm=true — arrêt du script.")
+                        return
             elif status == AvailabilityStatus.UNKNOWN:
                 logger.warning("Statut indéterminé pour {label}", label=course.label)
                 _screenshot(page, course_cfg, f"unknown_{course.sigle}")
