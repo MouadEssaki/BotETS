@@ -67,6 +67,7 @@ $Hidden = @(
     "src.config_loader",
     "src.session",
     "src.paths",
+    "src.windows_install",
     "src.timeutil",
     "src.capacity",
     "yaml",

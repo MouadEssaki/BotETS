@@ -8,7 +8,7 @@
   <p><strong>Surveillance Cheminot (ÉTS)</strong></p>
 
   <p>
-    <img alt="Version" src="https://img.shields.io/badge/version-1.0.1-0B5FFF?style=for-the-badge">
+    <img alt="Version" src="https://img.shields.io/badge/version-1.0.2-0B5FFF?style=for-the-badge">
     <img alt="Python" src="https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white">
     <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white">
   </p>
@@ -52,19 +52,24 @@ Bot Python ([Playwright](https://playwright.dev/python/)) qui surveille [Chemino
 Les utilisateurs téléchargent **un seul fichier** `BotEts.exe` (pas de zip) :
 
 1. [Releases](https://github.com/MouadEssaki/BotETS/releases) → **BotEts.exe**
-2. Double-clic
-3. Au **premier lancement**, Chromium est téléchargé une fois (~150 Mo) dans `%LOCALAPPDATA%\BotEts`
-4. L’UI **BotEts** s’ouvre (logo + titre)
+2. Double-clic **une fois**
+3. Au **premier lancement** :
+   - l’app s’installe dans `%LOCALAPPDATA%\BotEts`
+   - raccourcis **Menu Démarrer** + **Bureau** (tapez `BotEts` dans la recherche Windows)
+   - Chromium est téléchargé **une seule fois** (~150 Mo) — pas à chaque ouverture
+4. Les fois suivantes : recherche Windows → **BotEts**, ou double-clic sur le raccourci
 
-Aucun Python à installer pour l’utilisateur final.
+**Mise à jour** : télécharge le nouveau `BotEts.exe` sur Releases, double-clic **une fois**. Il remplace l’app dans `%LOCALAPPDATA%\BotEts` et rafraîchit les raccourcis. Chromium, la session MFA et tes bots (`launcher.json`) sont **conservés** — pas de re-download sauf si Playwright change de navigateur.
+
+Aucun Python à installer pour l’utilisateur final. Chromium et la session ne se retéléchargent pas à chaque lancement.
 
 Pour publier :
 
 ```powershell
 # 1. Mettre à jour VERSION, commit + push sur main
 # 2. Tag :
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 Le workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) construit `BotEts.exe` sur Windows et l’attache à la release.

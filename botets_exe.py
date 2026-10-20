@@ -102,7 +102,11 @@ class Splash:
         ttk.Label(frame, text="BotEts", font=("Segoe UI", 20, "bold")).pack()
         self.status = tk.StringVar(value="Starting BotEts…")
         ttk.Label(frame, textvariable=self.status, wraplength=420).pack(pady=(14, 6))
-        ttk.Label(frame, text="Please wait — this can take a minute the first time.").pack()
+        ttk.Label(
+            frame,
+            text="First launch installs shortcuts + Chromium (once). Later launches are fast.",
+            wraplength=420,
+        ).pack()
         self.root.update_idletasks()
         self.root.update()
 
@@ -176,6 +180,19 @@ def ensure_chromium(splash: Splash) -> None:
     splash.set_status("Opening BotEts…")
 
 
+def ensure_app_shortcuts(splash: Splash) -> None:
+    """Installe l'exe + raccourcis Menu Démarrer / Bureau (recherche Windows)."""
+    _prepare_sys_path()
+    from src.windows_install import ensure_windows_app
+
+    try:
+        ensure_windows_app(status_cb=splash.set_status)
+    except Exception as exc:
+        # Non bloquant : l'app fonctionne quand même depuis le .exe téléchargé
+        _log_crash(exc)
+        splash.set_status("Shortcuts skipped — opening BotEts…")
+
+
 def main() -> int:
     mp.freeze_support()
     if mp.current_process().name != "MainProcess":
@@ -187,6 +204,7 @@ def main() -> int:
         splash = Splash()
         splash.set_status("Preparing…")
         _prepare_sys_path()
+        ensure_app_shortcuts(splash)
         ensure_chromium(splash)
         splash.set_status("Loading interface…")
         from src.ui import run_ui
