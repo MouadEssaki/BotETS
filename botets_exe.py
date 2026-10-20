@@ -1,4 +1,4 @@
-"""Point d'entrée de BotEts.exe — installe Chromium au besoin, puis ouvre l'UI."""
+"""Point d'entrée de BotEts.exe — splash immédiat, Chromium si besoin, puis UI."""
 
 from __future__ import annotations
 
@@ -48,29 +48,83 @@ def _show_error(message: str) -> None:
         pass
 
 
+def _resource_logo() -> Path | None:
+    _prepare_sys_path()
+    from src.paths import resource_root
+
+    for name in ("logo.ico", "logo.png"):
+        path = resource_root() / "assets" / name
+        if path.is_file():
+            return path
+    return None
+
+
+def _apply_icon(window) -> None:
+    logo = _resource_logo()
+    if not logo:
+        return
+    try:
+        import tkinter as tk
+
+        # Keep a reference on the window so Tk doesn't garbage-collect it
+        window._botets_icon = tk.PhotoImage(file=str(logo.with_suffix(".png") if logo.suffix == ".ico" else logo))
+        # Prefer PNG for iconphoto; ico may not load as PhotoImage
+        png = logo if logo.suffix.lower() == ".png" else logo.with_suffix(".png")
+        if png.is_file():
+            window._botets_icon = tk.PhotoImage(file=str(png))
+            window.iconphoto(True, window._botets_icon)
+    except Exception:
+        pass
+
+
 def _browsers_ready(browsers_dir: Path) -> bool:
     if not browsers_dir.is_dir():
         return False
     return any(browsers_dir.rglob("chrome.exe"))
 
 
-def _install_chromium(browsers_dir: Path) -> None:
-    import tkinter as tk
-    from tkinter import ttk
+class Splash:
+    """Fenêtre visible dès le double-clic (évite l'impression que rien ne se passe)."""
 
+    def __init__(self) -> None:
+        import tkinter as tk
+        from tkinter import ttk
+
+        self._tk = tk
+        self.root = tk.Tk()
+        self.root.title("BotEts")
+        self.root.geometry("460x200")
+        self.root.resizable(False, False)
+        _apply_icon(self.root)
+
+        frame = ttk.Frame(self.root, padding=20)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="BotEts", font=("Segoe UI", 20, "bold")).pack()
+        self.status = tk.StringVar(value="Starting BotEts…")
+        ttk.Label(frame, textvariable=self.status, wraplength=420).pack(pady=(14, 6))
+        ttk.Label(frame, text="Please wait — this can take a minute the first time.").pack()
+        self.root.update_idletasks()
+        self.root.update()
+
+    def set_status(self, text: str) -> None:
+        self.status.set(text)
+        try:
+            self.root.update_idletasks()
+            self.root.update()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
+
+def _install_chromium(browsers_dir: Path, splash: Splash) -> None:
     browsers_dir.mkdir(parents=True, exist_ok=True)
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_dir)
-
-    splash = tk.Tk()
-    splash.title("BotEts")
-    splash.geometry("440x170")
-    splash.resizable(False, False)
-    frame = ttk.Frame(splash, padding=20)
-    frame.pack(fill="both", expand=True)
-    ttk.Label(frame, text="BotEts", font=("Segoe UI", 18, "bold")).pack()
-    status = tk.StringVar(value="Downloading Chromium (one-time, ~150 MB)…")
-    ttk.Label(frame, textvariable=status, wraplength=400).pack(pady=12)
-    ttk.Label(frame, text="This only happens once. Keep this window open.").pack()
+    splash.set_status("Downloading Chromium (one-time, ~150 MB)…")
 
     result: dict = {"ok": False, "error": ""}
 
@@ -78,7 +132,6 @@ def _install_chromium(browsers_dir: Path) -> None:
         try:
             from playwright._impl._driver import compute_driver_executable, get_driver_env
 
-            # Returns (node.exe, cli.js) — not a single path
             node, cli = compute_driver_executable()
             env = get_driver_env()
             env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_dir)
@@ -96,14 +149,10 @@ def _install_chromium(browsers_dir: Path) -> None:
         except Exception as exc:
             result["error"] = str(exc)
             _log_crash(exc)
-        splash.after(0, splash.quit)
+        splash.root.after(0, splash.root.quit)
 
     threading.Thread(target=work, daemon=True).start()
-    splash.mainloop()
-    try:
-        splash.destroy()
-    except Exception:
-        pass
+    splash.root.mainloop()
 
     if not result["ok"]:
         raise RuntimeError(
@@ -113,30 +162,42 @@ def _install_chromium(browsers_dir: Path) -> None:
         )
 
 
-def ensure_chromium() -> None:
+def ensure_chromium(splash: Splash) -> None:
     _prepare_sys_path()
     from src.paths import user_data_dir
 
     browsers_dir = user_data_dir() / "ms-playwright"
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_dir)
-    if not _browsers_ready(browsers_dir):
-        _install_chromium(browsers_dir)
+    if _browsers_ready(browsers_dir):
+        splash.set_status("Opening BotEts…")
+        return
+    _install_chromium(browsers_dir, splash)
+    # After install mainloop, recreate a short status splash if destroyed
+    splash.set_status("Opening BotEts…")
 
 
 def main() -> int:
     mp.freeze_support()
-    # Child processes used by multi-bot must not open the UI again.
     if mp.current_process().name != "MainProcess":
         return 0
 
+    splash: Splash | None = None
     try:
+        # Show UI feedback immediately (before heavy imports / Chromium check)
+        splash = Splash()
+        splash.set_status("Preparing…")
         _prepare_sys_path()
-        ensure_chromium()
+        ensure_chromium(splash)
+        splash.set_status("Loading interface…")
         from src.ui import run_ui
 
+        splash.close()
+        splash = None
         run_ui()
         return 0
     except Exception as exc:
+        if splash is not None:
+            splash.close()
         path = _log_crash(exc)
         _show_error(f"BotEts failed to start.\n\n{exc}\n\nLog saved to:\n{path}")
         return 1

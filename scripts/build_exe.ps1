@@ -20,9 +20,21 @@ $Dist = Join-Path $Root "dist"
 $Work = Join-Path $Root "build"
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 
-$Logo = Join-Path $Root "assets\logo.png"
-$IconArgs = @()
-# PyInstaller wants .ico for --icon; PNG still bundled as data
+$LogoPng = Join-Path $Root "assets\logo.png"
+$LogoIco = Join-Path $Root "assets\logo.ico"
+& $Python -m pip install -q pillow
+& $Python -c @"
+from pathlib import Path
+from PIL import Image
+png = Path(r'$LogoPng')
+ico = Path(r'$LogoIco')
+img = Image.open(png).convert('RGBA')
+sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+img.save(ico, format='ICO', sizes=sizes)
+print('Wrote', ico)
+"@
+if (-not (Test-Path $LogoIco)) { throw "Failed to create assets/logo.ico" }
+
 $AddData = @(
     "assets;assets",
     "config.yaml;.",
@@ -75,6 +87,7 @@ foreach ($mod in $Hidden) {
     --onefile `
     --windowed `
     --name "BotEts" `
+    --icon $LogoIco `
     --distpath $Dist `
     --workpath $Work `
     --paths $Root `
@@ -91,9 +104,9 @@ $Versioned = Join-Path $Dist "BotEts-$Version.exe"
 Copy-Item $Exe $Versioned -Force
 
 Write-Host ""
-Write-Host "EXE ready:"
+Write-Host "Upload THIS file to GitHub Releases:"
 Write-Host "  $Exe"
-Write-Host "  $Versioned"
+Write-Host "(optional copy: $Versioned)"
 Write-Host ""
-Write-Host "Users download BotEts.exe, double-click it."
-Write-Host "First launch downloads Chromium into %LOCALAPPDATA%\BotEts"
+Write-Host "Users: download BotEts.exe only, double-click it."
+Write-Host "First launch shows a splash, then downloads Chromium into %LOCALAPPDATA%\BotEts"
