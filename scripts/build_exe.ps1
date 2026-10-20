@@ -81,6 +81,7 @@ foreach ($mod in $Hidden) {
     @DataArgs `
     @HiddenArgs `
     --collect-all playwright `
+    --collect-submodules src `
     (Join-Path $Root "botets_exe.py")
 
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
